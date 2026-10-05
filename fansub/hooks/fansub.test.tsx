@@ -394,3 +394,61 @@ test('switching style re-subtitles what is already on screen', async ($, on) => 
   expect(await msg.find({ type: 'Text', text: /只测了正常输入/ })).toBeUndefined()
   await msg.unmount()
 })
+
+// ---- 省 token：完整说明只在需要时带 ----
+
+const HISTORY = { role: 'user', text: '登录模块能上线吗？', toolUses: [] } as const
+
+test('the full note goes out once, then a one-line reminder, and again after a style change or compaction', async ($, on) => {
+  mock.store(on)
+  on('ui.toast', () => ({ value: undefined }))
+  let compacts = 0
+  // 第一次压缩被跳过（什么也没压），第二次真的压了。
+  on('session.compact', () => (++compacts === 1 ? { skip: 'nothing to compact' } : { messages: [HISTORY] }) as never)
+  let seen: readonly string[] = []
+  on('prompt.submit', (_$, e) => {
+    seen = e.context ?? []
+    return { text: e.text }
+  })
+  const note = async () => {
+    await $.prompt.submit(SUBMIT)
+    return seen.find(c => c.includes('fansub')) ?? ''
+  }
+  const first = await note()
+  expect(first).toContain('Examples:')
+  expect(first).toContain('Only in your final reply of a turn')
+
+  const second = await note()
+  expect(second).not.toContain('Examples:')
+  expect(second).toContain('Track: Plain')
+  expect(second.length).toBeLessThan(200)
+
+  await $.command.run(typed('roast'))
+  expect(await note()).toContain('Subtitle track: Roast')
+  expect(await note()).not.toContain('Examples:')
+
+  await $.session.compact({ trigger: 'manual', messages: [HISTORY] } as never)
+  expect(await note()).not.toContain('Examples:')
+  await $.session.compact({ trigger: 'manual', messages: [HISTORY] } as never)
+  expect(await note()).toContain('Examples:')
+})
+
+test('text right after a subtitle does not start with a stray space', async ($, on) => {
+  mock.store(on)
+  const msg = await $.ui.mount({
+    plugin: 'fansub',
+    surface: 'terminal',
+    component: 'AssistantMessage',
+    props: { text: '聊得越久累积越多。⟦越聊越贵。⟧ 可以改成只在三种时候附带。', isFirstOfReply: true },
+  })
+  const texts: string[] = []
+  const walk = (node: unknown) => {
+    if (typeof node !== 'object' || node === null) return
+    const el = node as { type?: string; props?: { text?: string; children?: unknown }; children?: unknown }
+    if (el.type === 'Markdown' && el.props?.text) texts.push(el.props.text)
+    for (const kids of [el.children, el.props?.children]) if (Array.isArray(kids)) kids.forEach(walk)
+  }
+  walk(await msg.drawn())
+  expect(texts).toEqual(['聊得越久累积越多。', '可以改成只在三种时候附带。'])
+  await msg.unmount()
+})

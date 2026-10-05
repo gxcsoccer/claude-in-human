@@ -34,6 +34,8 @@ const SWITCHED = { plugin: 'fansub', key: 'hasSwitched' } as const
 const dry = atom(DRY, [])
 const isNew = atom(IS_NEW, false)
 const hasSwitched = atom(SWITCHED, false)
+const BRIEFED = { plugin: 'fansub', key: 'briefed' } as const
+const briefed = atom(BRIEFED, null)
 
 /** 一段回复的指纹：结尾 120 个字，用来认出「整轮没有官话」的那段。 */
 const fingerprint = (text: string) => text.trim().slice(-120)
@@ -78,9 +80,15 @@ Rules:
 - Short: ideally under 20 Chinese characters or 12 English words. Write it in the language the user writes in.
 - Honest and specific to the situation at hand: name the real thing being glossed over, not a generic paraphrase.
 - Only sentences that need it. Plain sentences get none; most replies have 1 to 5 subtitles, a purely factual one may have none.
+- Only in your final reply of a turn. The short progress notes you write between tool calls get no subtitles.
 - Never inside code blocks, inline code, tables, headings, commit messages, files you write, or any tool input.
 - Never mention, explain or apologise for the subtitles.
 - If the user asks to change the subtitles (track, display, style, interface language), call the tool mcp__fansub__subtitles rather than explaining slash commands.`
+}
+
+/** 完整说明已经给过时，每轮只附这一行，提醒它别忘了。 */
+function reminder(t: FansubTrack): string {
+  return `(fansub: keep adding ⟦subtitles⟧ to diplomatic sentences in your final reply, as the earlier fansub note says. Track: ${STRINGS.en.tracks[t]}.)`
 }
 
 async function strings($: EngineInterface) {
@@ -341,8 +349,30 @@ export const register: Register = on => {
       return { drop: await openCinema($) }
     }
     await $.state.set(LIVE, null)
-    if ((await read($, mode)) === 'off') return next(e)
-    return next({ ...e, context: [...(e.context ?? []), section(await read($, track), await read($, lang))] })
+    if ((await read($, mode)) === 'off') {
+      await $.state.set(BRIEFED, null)
+      return next(e)
+    }
+    // 完整说明约 400 token，每轮都带太贵：第一轮、换了风格或语言、压缩或 /clear 之后才带完整的，
+    // 其余轮次只带一行提醒。
+    const t = await read($, track)
+    const l = await read($, lang)
+    const brief = `${t}|${l}`
+    const isBriefed = (await read($, briefed)) === brief
+    if (!isBriefed) await $.state.set(BRIEFED, brief)
+    return next({ ...e, context: [...(e.context ?? []), isBriefed ? reminder(t) : section(t, l)] })
+  })
+
+  // 对话被压缩后，前面那份完整说明可能被压没了：下一轮重新带上。
+  on('session.compact', async ($, e, next) => {
+    const done = await next(e)
+    if (e.agentId === undefined && done.skip === undefined) await $.state.set(BRIEFED, null)
+    return done
+  })
+
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') await $.state.set(BRIEFED, null)
+    return next(e)
   })
 
   // 同声传译：边流边抓最新那句字幕，回复完了再把整段的字幕收进片库。
@@ -433,7 +463,9 @@ export const register: Register = on => {
 
     const body = segs.map((s, i) => {
       if (s.kind === 'text') {
-        const text = s.text.replace(/^[ \t]*\n/, '').replace(/[ \t]+$/, '')
+        // 字幕后面接着的正文常以空格开头（「…⟧ 可以改成…」），不去掉就会缩进一格。
+        const after = segs[i - 1]?.kind === 'sub'
+        const text = s.text.replace(/^[ \t]*\n/, '').replace(after ? /^[ \t]+/ : /^$/, '').replace(/[ \t]+$/, '')
         if (!text.trim()) return null
         return <Markdown key={`t${i}`} text={text} dimColor={m === 'mute'} />
       }

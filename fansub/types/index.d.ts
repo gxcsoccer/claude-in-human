@@ -33,6 +33,8 @@ declare module 'claude-code' {
       isNew: boolean
       /** 成功换过一次风格：控制台上的提示就不再显示。 */
       hasSwitched: boolean
+      /** 模型已经拿到完整说明时的「风格|语言」；变了、压缩了、/clear 了就清空，下一轮重发。 */
+      briefed: string | null
     }
   }
 }
