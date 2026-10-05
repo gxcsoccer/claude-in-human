@@ -1,0 +1,6 @@
+{
+  "name": "fansub",
+  "version": "0.1.0",
+  "description": "字幕组：Claude 一本正经地说，底下像电影字幕一样同步打出大白话",
+  "types": "./types/index.d.ts"
+}
