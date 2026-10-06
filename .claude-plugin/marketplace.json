@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-in-human",
+  "description": "Claude Code mods that make Claude talk like a human.",
+  "owner": {
+    "name": "gxcsoccer"
+  },
+  "plugins": [
+    {
+      "name": "fansub",
+      "description": "字幕组：Claude 一本正经地说，底下像电影字幕一样同步打出大白话。Plain-talk subtitles under Claude's diplomatic sentences.",
+      "source": "./fansub",
+      "category": "productivity",
+      "homepage": "https://github.com/gxcsoccer/claude-in-human"
+    }
+  ]
+}
