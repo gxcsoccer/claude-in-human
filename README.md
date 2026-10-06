@@ -79,6 +79,10 @@ claude plugin validate fansub   # 校验清单和钩子
 claude --plugin-dir ./fansub    # 用本地目录加载
 ```
 
+## 许可证
+
+[MIT](LICENSE)
+
 ---
 
 ## English
