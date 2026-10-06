@@ -24,7 +24,8 @@ export function lastSentence(before: string): string {
 }
 
 /** 把一段回复切成「正文 / 字幕」交替的片段；代码块、行内代码里不认字幕。 */
-export function parse(text: string): Segment[] {
+export function parse(raw: string): Segment[] {
+  const text = normalize(raw)
   const out: Segment[] = []
   let prose = ''
   const pushText = (t: string) => {
@@ -56,8 +57,45 @@ export function parse(text: string): Segment[] {
   return out
 }
 
+// 流式输出时屏幕上的样子：每条字幕单独一行引用。回复结束后，引擎可能拿这份显示版来画消息，
+// 所以解析前先把它还原成 ⟦⟧，两种来源画出来的字幕条一样。
+const SHOWN = /\n> 🎬 ([^\n]*)\n\n/g
+const SHOWN_MARK = '\n> 🎬 '
+
+/** 把流式显示版里的「> 🎬 字幕」还原成 ⟦字幕⟧。 */
+export function normalize(text: string): string {
+  return text.includes(SHOWN_MARK) ? text.replace(SHOWN, (_, sub: string) => `${OPEN}${sub}${CLOSE}`) : text
+}
+
 export function hasSubs(text: string): boolean {
-  return text.includes(OPEN)
+  return text.includes(OPEN) || text.includes(SHOWN_MARK)
+}
+
+/**
+ * 流式输出时的显示版（只改屏幕，不改存下来的消息）：句子里的 ⟦字幕⟧ 换成紧跟其后的一行引用，
+ * 不再在句子中间露出括号。按行处理，代码块跨好几次刷新，所以由调用方记住是否在代码块里。
+ * 半截的字幕（最后一次刷新可能停在半行）先不显示；关掉字幕时整条去掉。
+ */
+export function streamView(delta: string, inFence: boolean, showSubs: boolean): { text: string; inFence: boolean } {
+  const out: string[] = []
+  for (const line of delta.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      out.push(line)
+      continue
+    }
+    if (inFence || !line.includes(OPEN)) {
+      out.push(line)
+      continue
+    }
+    let shown = ''
+    for (const seg of parse(line)) {
+      if (seg.kind === 'text') shown += shown.endsWith('\n\n') ? seg.text.replace(/^[ \t]+/, '') : seg.text
+      else if (showSubs && !seg.isOpen && seg.text) shown += `${SHOWN_MARK}${seg.text}\n\n`
+    }
+    out.push(shown)
+  }
+  return { text: out.join('\n'), inFence }
 }
 
 /** 关字幕：只留 Claude 的原声。 */

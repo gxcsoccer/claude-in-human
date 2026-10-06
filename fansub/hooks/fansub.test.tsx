@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { firstAppleLanguage, langOf } from './i18n'
-import { pairsOf, parse, strip, water } from './parse'
+import { normalize, pairsOf, parse, streamView, strip, water } from './parse'
 
 const REPLY = [
   '我已经完成了登录模块的重构。',
@@ -450,5 +450,40 @@ test('text right after a subtitle does not start with a stray space', async ($, 
   }
   walk(await msg.drawn())
   expect(texts).toEqual(['聊得越久累积越多。', '可以改成只在三种时候附带。'])
+  await msg.unmount()
+})
+
+// ---- 流式输出时不露括号 ----
+
+test('while streaming, each subtitle moves to its own quoted line, code blocks untouched', () => {
+  const first = streamView('当前实现尚未覆盖所有边界条件。⟦只测了正常输入。⟧ 该方案在性能上有优化空间。⟦有点慢。⟧\n```ts', false, true)
+  expect(first.text).toBe('当前实现尚未覆盖所有边界条件。\n> 🎬 只测了正常输入。\n\n该方案在性能上有优化空间。\n> 🎬 有点慢。\n\n\n```ts')
+  expect(first.inFence).toBe(true)
+  // 代码块跨到下一次刷新：里面的 ⟦⟧ 原样保留
+  const second = streamView('const s = "⟦这不是字幕⟧"\n```\n收尾。⟦半截', first.inFence, true)
+  expect(second.text).toBe('const s = "⟦这不是字幕⟧"\n```\n收尾。')
+  expect(second.inFence).toBe(false)
+  // 关掉字幕：整条去掉
+  expect(streamView('尚未达标。⟦没测够。⟧', false, false).text).toBe('尚未达标。')
+})
+
+test('the streamed view parses back to the same subtitles as the stored text', () => {
+  const stored = '- 幻觉：模型有时会生成看似可信但并不准确的内容。⟦会一本正经地编。⟧\n- 知识截止：训练数据有截止日期。'
+  const shown = streamView(stored, false, true).text
+  expect(normalize(shown)).toBe(stored)
+  expect(pairsOf(shown)).toEqual(pairsOf(stored))
+})
+
+test('the MessageDisplay hook rewrites what streams, and a message drawn from that view still gets subtitle bars', async ($, on) => {
+  mock.store(on)
+  on('classic.MessageDisplay', () => ({}))
+  const shown = await $.classic.MessageDisplay({ turn_id: 't1', message_id: 'm1', index: 0, final: false, delta: '覆盖率尚未达标。⟦测试没写够。⟧\n' } as never)
+  const text = (shown as { displayContent?: string }).displayContent ?? ''
+  expect(text).toContain('> 🎬 测试没写够。')
+  expect(text).not.toContain('⟦')
+
+  const msg = await $.ui.mount({ plugin: 'fansub', surface: 'terminal', component: 'AssistantMessage', props: { text, isFirstOfReply: true } })
+  expect(await msg.find({ type: 'Text', text: /测试没写够/ })).toBeDefined()
+  expect(await msg.find({ text: /🎬/ })).toBeUndefined()
   await msg.unmount()
 })

@@ -11,7 +11,7 @@ import type {
   FansubTrack,
 } from '../types'
 import { EXAMPLES, STRINGS, firstAppleLanguage, langOf } from './i18n'
-import { beatsFor, hasSubs, pairsOf, parse, pct, strip, water } from './parse'
+import { beatsFor, hasSubs, pairsOf, parse, pct, streamView, strip, water } from './parse'
 
 const TRACK = { plugin: 'fansub', key: 'track' } as const
 const MODE = { plugin: 'fansub', key: 'mode' } as const
@@ -373,6 +373,17 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') await $.state.set(BRIEFED, null)
     return next(e)
+  })
+
+  // 流式输出时屏幕上的样子：⟦字幕⟧ 不在句子中间露出括号，换成紧跟其后的一行「> 🎬 字幕」。
+  // 只改显示，不改存下来的消息；代码块会跨好几次刷新，按消息记住是否在代码块里。
+  const inFence = new Map<string, boolean>()
+  on('classic.MessageDisplay', async ($, e, next) => {
+    const done = await next(e)
+    const shown = streamView(done.displayContent ?? e.delta, inFence.get(e.message_id) ?? false, (await read($, mode)) !== 'off')
+    if (e.final) inFence.delete(e.message_id)
+    else inFence.set(e.message_id, shown.inFence)
+    return { ...done, displayContent: shown.text }
   })
 
   // 同声传译：边流边抓最新那句字幕，回复完了再把整段的字幕收进片库。
