@@ -1,6 +1,6 @@
 # 🎬 Claude 说人话
 
-Claude 一本正经地说，底下像电影字幕一样同步打出大白话。
+Claude 最近越来越不说人话了，写一个插件来同声翻译下它的语言。
 
 ![fansub demo](assets/fansub-demo.gif)
 
