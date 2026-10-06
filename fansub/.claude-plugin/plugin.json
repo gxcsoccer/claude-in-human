@@ -1,7 +1,7 @@
 {
   "name": "fansub",
   "version": "0.2.0",
-  "description": "字幕组：Claude 一本正经地说，底下像电影字幕一样同步打出大白话。Plain-talk subtitles under Claude's diplomatic sentences.",
+  "description": "Claude 最近越来越不说人话了，写一个插件来同声翻译下它的语言。Plain-talk subtitles under Claude's diplomatic sentences.",
   "author": {
     "name": "gxcsoccer"
   },
